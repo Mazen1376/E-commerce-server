@@ -8,7 +8,17 @@ import { orderRoutes } from './src/Modules/orderRoutes.js';
 import cors from 'cors';
 
 const app = express()
-dbConnection
+
+// Serverless DB Connection Middleware
+app.use(async (req, res, next) => {
+  try {
+    await dbConnection();
+    next();
+  } catch (err) {
+    res.status(500).json({ error: "Database connection failed! Ensure Vercel DB_URI is set properly." });
+  }
+});
+
 app.use(cors())
 app.use(express.json())
 app.use(userRoutes)
