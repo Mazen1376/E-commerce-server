@@ -5,18 +5,18 @@ import { emailTemaplate } from './emailTemplate.js';
 
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
+  host: process.env.EMAIL_HOST || "smtp.gmail.com",
+  port: process.env.EMAIL_PORT || 465,
   secure: true,
   auth: {
-    user: "Mazen1376797@gmail.com",
-    pass: "useznwjlbmpbvgqq",
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   }
 });
 
 export const sendEmail = async (email) => {
   const info = await transporter.sendMail({
-    from: '"Mazen Yasser" <Mazen1376797@gmail.com>',
+    from: `"ShopEase Support" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: "plz verify ur email",
     html: emailTemaplate(email),

@@ -1,85 +1,119 @@
 import { cartModel } from '../db/models/cartModel.js'
 import { orderModel } from '../db/models/orderModel.js'
 import { productModel } from '../db/models/productModel.js'
-import { userModel } from '../db/models/userModel.js'
+import { catchAsync } from '../util/catchAsync.js'
 
+const getUserCart = catchAsync(async (req, res) => {
+    const userCart = await cartModel.findOne({ userId: req.decoded._id }).populate('products.productId')
+    res.json(userCart)
+})
 
-const getUserCart = async (req,res)=>{
+const getAllCarts = catchAsync(async (req, res) => {
+    const carts = await cartModel.find().populate('products.productId')
+    res.json({ message: "all carts", carts })
+})
 
-        const userCart = await cartModel.findOne({userId: req.decoded._id})
-        res.json({message:"ur cart", userCart})
+const addToCart = catchAsync(async (req, res) => {
+    const { id } = req.params
+    const { quantity } = req.body
+    const userId = req.decoded._id
+
+    let cart = await cartModel.findOne({ userId });
+    if (!cart) {
+        cart = await cartModel.create({ userId, products: [] });
     }
 
-const getAllCarts = async (req,res)=>{
+    const productIndex = cart.products.findIndex(p => p.productId.toString() === id);
+    const validQuantity = quantity || 1;
 
-        const carts = await cartModel.find()
-        res.json({message:"all carts", carts})
+    if (productIndex > -1) {
+        cart.products[productIndex].quantity += validQuantity;
+    } else {
+        cart.products.push({ productId: id, quantity: validQuantity });
     }
 
-const addToCart =  async (req,res)=>{
+    await cart.save();
+    res.status(201).json(cart)
+})
 
-    const {id}= req.params
-    const {quantity} = req.body
+const decrementFromCart = catchAsync(async (req, res) => {
+    const { id } = req.params
     const userId = req.decoded._id
     
-    const exist = await cartModel.findOne({userId,"products.productId": id});
+    const cart = await cartModel.findOne({ userId });
+    if (!cart) return res.status(404).json({ message: "Cart not found" })
 
-    if (exist){var updatedToCart = await cartModel.findOneAndUpdate({"products.productId": id},{$inc: {"products.$.quantity": quantity}},{new: true})}
-    else{var updatedToCart = await cartModel.findOneAndUpdate({userId:userId},{$push: {products:{productId : id, quantity : quantity}}},{new:true})}
+    const productIndex = cart.products.findIndex(p => p.productId.toString() === id);
+    if (productIndex > -1) {
+        if (cart.products[productIndex].quantity > 1) {
+            cart.products[productIndex].quantity -= 1;
+        } else {
+            cart.products.splice(productIndex, 1);
+        }
+        await cart.save();
+    }
 
-    res.json({ message: "added successfully" ,updatedToCart})}
+    res.json({ message: "Updated successfully", cart })
+})
 
-
-const decrementFromCart = async (req,res)=>{
-     
-    const {id}= req.params
-    const userId = req.decoded._id
-        const updatedToCart = await cartModel.findOneAndUpdate(
-            {"products.productId": id },{ $inc: {"products.$.quantity": -1}},{ new: true })
-        
-    res.json({ message: "updated successfully" ,updatedToCart})
- 
-}
-
-const deleteFromCart = async (req, res) => {
-    const { id } = req.params;
+const deleteFromCart = catchAsync(async (req, res) => {
+    const { id } = req.params
     const userId = req.decoded._id
 
-    const updatedCart = await cartModel.findOneAndUpdate({userId}, {$pull:{ products:{ productId: id}}}, {new: true})
+    const updatedCart = await cartModel.findOneAndUpdate(
+        { userId },
+        { $pull: { products: { productId: id } } },
+        { new: true }
+    )
+    res.json({ updatedCart })
+})
 
-    res.json({ message: "deleted successfully", updatedCart })}
-
-
-
-const createOrder = async (req, res) => {
-
+const createOrder = catchAsync(async (req, res) => {
     const userId = req.decoded._id
-    const cart = await cartModel.findOne({userId:userId})
+    const cart = await cartModel.findOne({ userId })
+    
+    if (!cart || cart.products.length === 0) {
+        return res.status(400).json({ message: "Your cart is empty" })
+    }
+
     const cartProducts = cart.products
 
-    for (var product of cartProducts) {
-        const availableProduct = await productModel.findById(product.productId)
-        if (!product || availableProduct.quantity < product.quantity) {
-            return res.json({ message: `this product is not available right now ${availableProduct?.name}` })}}
+    // 1. Validate stocks
+    for (const item of cartProducts) {
+        const product = await productModel.findById(item.productId)
+        if (!product || product.quantity < item.quantity) {
+            return res.status(400).json({ 
+                message: `Product ${product?.name || 'Unknown'} is out of stock or has insufficient quantity.` 
+            })
+        }
+    }
 
-    if(cartProducts.length==0){return res.json({message:"ur cart is empty"})}
+    // 2. Create Order
+    const orderData = {
+        ...req.body,
+        createdBy: userId,
+        products: cartProducts
+    }
+    const createdOrder = await orderModel.create(orderData)
 
-    const createdOrderBeforeProducts = await orderModel.insertOne(req.body)
-    const createdOrderAfter = await orderModel.findOneAndUpdate({_id:createdOrderBeforeProducts._id}, {$push:{ products: cartProducts}},{new:true})
-    const deleteProductsFromCart = await cartModel.findOneAndUpdate({userId},{$set:{products:[]}},{new:true})
+    // 3. Update Inventory (Decrement)
+    for (const item of cartProducts) {
+        await productModel.findByIdAndUpdate(item.productId, {
+            $inc: { quantity: -item.quantity }
+        })
+    }
 
+    // 4. Clear Cart
+    await cartModel.findOneAndUpdate({ userId }, { $set: { products: [] } })
 
-    await productModel.findOneAndUpdate({_id:product.productId},{$inc:{quantity:-product.quantity}})
-    
-    res.json({message:"test" , createdOrderAfter})
-}
+    res.status(201).json({ message: "Order placed successfully", order: createdOrder })
+})
 
-
-export{
+export {
     getUserCart,
     getAllCarts,
     addToCart,
     decrementFromCart,
     deleteFromCart,
     createOrder
-}
+}

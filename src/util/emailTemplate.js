@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken'
 export const emailTemaplate = (email)=>{
-    const emailToken = jwt.sign(email, "any_secret_key")
+    const emailToken = jwt.sign(email, process.env.JWT_SECRET)
     return (`
 
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">

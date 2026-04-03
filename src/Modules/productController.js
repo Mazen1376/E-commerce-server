@@ -1,43 +1,43 @@
-import jwt from 'jsonwebtoken'
 import { productModel } from '../db/models/productModel.js'
+import { catchAsync } from '../util/catchAsync.js'
 
-const getProducts = async (req,res)=>{
+const getProducts = catchAsync(async (req, res) => {
     const products = await productModel.find()
     res.json(products)
-}
+})
 
-const getProduct = async (req,res)=>{
-    const {id} = req.params
-    const products = await productModel.findById(id)
-    res.json(products)
-}
+const getProduct = catchAsync(async (req, res) => {
+    const { id } = req.params
+    const product = await productModel.findById(id)
+    if (!product) return res.status(404).json({ message: "Product not found" })
+    res.json(product)
+})
 
-const addProduct =  async (req,res)=>{
+const addProduct = catchAsync(async (req, res) => {
+    const exist = await productModel.findOne({ name: req.body.name })
+    if (exist) return res.status(409).json({ message: "Product already exists" })
 
-    const exist = await productModel.findOne({name:req.body.name})
-    if(exist) return res.json({ message: "product already exist plz update"})
+    const addedProduct = await productModel.create(req.body)
+    res.status(201).json({ message: "Added successfully", addedProduct })
+})
 
-    const addedProduct = await productModel.insertMany(req.body)
+const updateProduct = catchAsync(async (req, res) => {
+    const { id } = req.params
+    const updatedProduct = await productModel.findByIdAndUpdate(id, { ...req.body }, { new: true })
+    if (!updatedProduct) return res.status(404).json({ message: "Product not found" })
+    res.json({ message: "Updated successfully", updatedProduct })
+})
 
-    res.json({ message: "added successfully" , addedProduct})
-}
-
-const updateProduct =  async (req,res)=>{ 
-    const {id} = req.params
-    const updatedProduct = await productModel.findByIdAndUpdate(id, {...req.body}, {new:true})
-    res.json({ message: "updated successfully" , updatedProduct})
-}
-
-const deleteProduct = async(req,res)=>{
-     const {id} = req.params
-     const deletedProduct = await productModel.findByIdAndDelete(id)
-      res.json({message:"deleted successfully", deletedProduct})
-}
-
+const deleteProduct = catchAsync(async (req, res) => {
+    const { id } = req.params
+    const deletedProduct = await productModel.findByIdAndDelete(id)
+    if (!deletedProduct) return res.status(404).json({ message: "Product not found" })
+    res.json({ message: "Deleted successfully", deletedProduct })
+})
 
 export {
     getProducts,
-    getProduct, 
+    getProduct,
     addProduct,
     updateProduct,
     deleteProduct
